@@ -1,0 +1,105 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function owns(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function currentRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function hasRole(role) {
+      return signedIn() && currentRole() == role;
+    }
+
+    match /users/{userId} {
+      allow create: if owns(userId)
+        && request.resource.data.role == 'student'
+        && request.resource.data.status == 'active'
+        && request.resource.data.email == request.auth.token.email;
+      allow read: if owns(userId) || hasRole('mentor') || hasRole('admin');
+      allow update: if owns(userId)
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.status == resource.data.status
+        && request.resource.data.email == resource.data.email;
+      allow update, delete: if hasRole('admin');
+    }
+
+    match /users/{userId}/notes/{noteId} {
+      allow read, write: if owns(userId);
+      allow read, delete: if hasRole('admin');
+    }
+
+    match /users/{userId}/progress/{progressId} {
+      allow read, write: if owns(userId);
+      allow read: if hasRole('mentor') || hasRole('admin');
+    }
+
+    match /users/{userId}/interviewSessions/{sessionId} {
+      allow read, write: if owns(userId);
+      allow read: if hasRole('mentor') || hasRole('admin');
+    }
+
+    match /users/{userId}/readinessReports/{reportId} {
+      allow read: if owns(userId) || hasRole('mentor') || hasRole('admin');
+      allow write: if false;
+    }
+
+    match /users/{userId}/loginActivity/{activityId} {
+      allow read: if owns(userId) || hasRole('admin');
+      allow write: if false;
+    }
+
+    match /users/{userId}/activeSessions/{sessionId} {
+      allow read, delete: if owns(userId) || hasRole('admin');
+      allow create, update: if false;
+    }
+
+    match /users/{userId}/securityAlerts/{alertId} {
+      allow read: if owns(userId) || hasRole('admin');
+      allow write: if false;
+    }
+
+    match /mentorFeedback/{feedbackId} {
+      allow read: if signedIn()
+        && (resource.data.studentId == request.auth.uid || hasRole('mentor') || hasRole('admin'));
+      allow create, update: if hasRole('mentor') || hasRole('admin');
+      allow delete: if hasRole('admin');
+    }
+
+    match /platformSettings/{settingId} {
+      allow read: if signedIn();
+      allow write: if hasRole('admin');
+    }
+
+    match /challenges/{challengeId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /challengeAttempts/{attemptId} {
+      allow read: if (signedIn() && resource.data.uid == request.auth.uid) || hasRole('admin');
+      allow write: if false;
+    }
+
+    match /leaderboard/{userId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /users/{userId}/rankingHistory/{historyId} {
+      allow read: if owns(userId) || hasRole('mentor') || hasRole('admin');
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
