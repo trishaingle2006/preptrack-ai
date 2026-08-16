@@ -28,7 +28,7 @@
 - [x] Add challenges, scoring, leaderboards, badges, ranks, and streaks
 - [ ] Test security rules, application behavior, and responsive layouts
 - [x] Deploy the website
-- [ ] Publish the source repository
+- [x] Publish the source repository
 - [ ] Complete the internship report and final evidence checklist
 
 ## Submission deliverables

@@ -76,8 +76,8 @@
 - [ ] Firestore security rules and tests
 - [ ] Application tests completed
 - [x] Hosted website verified without local dependencies
-- [ ] Public or evaluator-accessible GitHub repository
+- [x] Public or evaluator-accessible GitHub repository
 - [x] README and setup instructions
 - [x] Screenshots and demonstration evidence
-- [ ] Internship report completed
+- [x] Internship report completed
 - [ ] Final one-time submission reviewed

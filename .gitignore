@@ -7,6 +7,10 @@ dist/
 .DS_Store
 
 .vercel
+
+# Generated document QA artifacts
+deliverables/report_qa*/
+deliverables/*.pdf
 .firebase/
 firebase-debug.log*
 firestore-debug.log*
