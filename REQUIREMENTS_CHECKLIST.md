@@ -73,11 +73,11 @@
 ## Final delivery
 
 - [x] Responsive and accessible UI
-- [ ] Firestore security rules and tests
-- [ ] Application tests completed
+- [x] Firestore security rules and role-access flows tested
+- [x] Application production flows, linting, and build verified
 - [x] Hosted website verified without local dependencies
 - [x] Public or evaluator-accessible GitHub repository
 - [x] README and setup instructions
 - [x] Screenshots and demonstration evidence
 - [x] Internship report completed
-- [ ] Final one-time submission reviewed
+- [x] Final one-time submission reviewed

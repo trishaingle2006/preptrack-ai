@@ -26,10 +26,10 @@
 - [x] Add company profiles and recruiter simulation
 - [x] Implement readiness scoring, roadmaps, and history
 - [x] Add challenges, scoring, leaderboards, badges, ranks, and streaks
-- [ ] Test security rules, application behavior, and responsive layouts
+- [x] Test security rules, application behavior, and responsive layouts
 - [x] Deploy the website
 - [x] Publish the source repository
-- [ ] Complete the internship report and final evidence checklist
+- [x] Complete the internship report and final evidence checklist
 
 ## Submission deliverables
 
