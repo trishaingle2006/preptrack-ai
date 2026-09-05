@@ -13,6 +13,7 @@ export default function PracticePage() {
   const [search, setSearch] = useState("");
   const [completed, setCompleted] = useState([]);
   const [loading, setLoading] = useState(Boolean(db));
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!db || !user) {
@@ -21,6 +22,7 @@ export default function PracticePage() {
     }
     getDoc(doc(db, "users", user.uid, "progress", "practice"))
       .then((snapshot) => setCompleted(snapshot.data()?.completedQuestionIds ?? []))
+      .catch(() => setError("Your saved progress could not be loaded. Please refresh and try again."))
       .finally(() => setLoading(false));
   }, [user]);
 
@@ -33,15 +35,22 @@ export default function PracticePage() {
   }, [activeType, search]);
 
   async function toggleComplete(questionId) {
+    setError("");
+    const previous = completed;
     const next = completed.includes(questionId)
       ? completed.filter((id) => id !== questionId)
       : [...completed, questionId];
     setCompleted(next);
     if (db && user) {
-      await setDoc(doc(db, "users", user.uid, "progress", "practice"), {
-        completedQuestionIds: next,
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+      try {
+        await setDoc(doc(db, "users", user.uid, "progress", "practice"), {
+          completedQuestionIds: next,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      } catch {
+        setCompleted(previous);
+        setError("That progress update could not be saved. Please try again.");
+      }
     }
   }
 
@@ -51,11 +60,13 @@ export default function PracticePage() {
     <section className="workspace-page">
       <div className="workspace-heading"><div><span className="eyebrow">Preparation library</span><h1>Practice questions</h1><p>Build foundations before starting adaptive and company-specific interviews.</p></div><div className="completion-ring"><strong>{percent}%</strong><span>complete</span></div></div>
       <div className="practice-toolbar">
-        <div className="filter-tabs">{types.map((type) => <button className={activeType === type ? "active" : ""} key={type} onClick={() => setActiveType(type)}>{type}</button>)}</div>
-        <label className="practice-search"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search questions" /></label>
+        <div className="filter-tabs" aria-label="Question category">{types.map((type) => <button className={activeType === type ? "active" : ""} aria-pressed={activeType === type} key={type} onClick={() => setActiveType(type)}>{type}</button>)}</div>
+        <label className="practice-search"><Search size={18} /><input aria-label="Search practice questions" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search questions" /></label>
       </div>
+      {error && <div className="auth-alert error" role="alert">{error}</div>}
       {loading ? <div className="empty-state">Loading your progress…</div> : (
         <div className="question-grid">
+          {visibleQuestions.length === 0 && <div className="empty-state question-empty"><Search size={24} /><strong>No matching questions</strong><span>Try another keyword or choose a different category.</span></div>}
           {visibleQuestions.map((item) => {
             const isComplete = completed.includes(item.id);
             return <article className={isComplete ? "practice-card complete" : "practice-card"} key={item.id}>

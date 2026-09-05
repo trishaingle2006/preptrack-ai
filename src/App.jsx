@@ -15,23 +15,55 @@ import {
   X,
 } from "lucide-react";
 import { collection, doc, getDoc, getDocs, limit, orderBy, query } from "firebase/firestore";
-import { createElement, useEffect, useState } from "react";
-import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { createElement, lazy, Suspense, useEffect, useState } from "react";
+import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { db, isFirebaseConfigured } from "./lib/firebase";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AuthorizedRoute from "./components/AuthorizedRoute";
+import AppErrorBoundary from "./components/AppErrorBoundary";
+import PageLoader from "./components/PageLoader";
+import ThemeToggle from "./components/ThemeToggle";
 import { useAuth } from "./context/AuthContext";
-import AuthPage from "./pages/AuthPage";
-import AdaptiveInterviewPage from "./pages/AdaptiveInterviewPage";
-import AccountSecurityPage from "./pages/AccountSecurityPage";
-import ChallengeArenaPage from "./pages/ChallengeArenaPage";
-import NotesPage from "./pages/NotesPage";
-import PracticePage from "./pages/PracticePage";
-import PlacementReadinessPage from "./pages/PlacementReadinessPage";
-import RoleWorkspacePage from "./pages/RoleWorkspacePage";
-import RecruiterSimulatorPage from "./pages/RecruiterSimulatorPage";
-import UnauthorizedPage from "./pages/UnauthorizedPage";
 import { hasPermission, PERMISSIONS } from "./security/permissions";
+
+const pageImports = {
+  auth: () => import("./pages/AuthPage"),
+  emailAction: () => import("./pages/EmailActionPage"),
+  interview: () => import("./pages/AdaptiveInterviewPage"),
+  security: () => import("./pages/AccountSecurityPage"),
+  challenge: () => import("./pages/ChallengeArenaPage"),
+  notes: () => import("./pages/NotesPage"),
+  practice: () => import("./pages/PracticePage"),
+  readiness: () => import("./pages/PlacementReadinessPage"),
+  resetPassword: () => import("./pages/ResetPasswordPage"),
+  roles: () => import("./pages/RoleWorkspacePage"),
+  recruiter: () => import("./pages/RecruiterSimulatorPage"),
+  unauthorized: () => import("./pages/UnauthorizedPage"),
+};
+const routeImport = {
+  "/practice": pageImports.practice,
+  "/notes": pageImports.notes,
+  "/adaptive-interview": pageImports.interview,
+  "/recruiter-simulator": pageImports.recruiter,
+  "/readiness": pageImports.readiness,
+  "/challenge-arena": pageImports.challenge,
+  "/mentor": pageImports.roles,
+  "/admin": pageImports.roles,
+  "/security": pageImports.security,
+};
+const preloadRoute = (path) => routeImport[path]?.();
+const AuthPage = lazy(pageImports.auth);
+const EmailActionPage = lazy(pageImports.emailAction);
+const AdaptiveInterviewPage = lazy(pageImports.interview);
+const AccountSecurityPage = lazy(pageImports.security);
+const ChallengeArenaPage = lazy(pageImports.challenge);
+const NotesPage = lazy(pageImports.notes);
+const PracticePage = lazy(pageImports.practice);
+const PlacementReadinessPage = lazy(pageImports.readiness);
+const ResetPasswordPage = lazy(pageImports.resetPassword);
+const RoleWorkspacePage = lazy(pageImports.roles);
+const RecruiterSimulatorPage = lazy(pageImports.recruiter);
+const UnauthorizedPage = lazy(pageImports.unauthorized);
 
 const navigation = [
   { to: "/dashboard", label: "Overview", icon: LayoutDashboard, permission: PERMISSIONS.VIEW_DASHBOARD },
@@ -46,15 +78,20 @@ const navigation = [
   { to: "/security", label: "Account Security", icon: LockKeyhole, permission: PERMISSIONS.MANAGE_OWN_SECURITY },
 ];
 
+const pageTitles = Object.fromEntries(navigation.map((item) => [item.to, `${item.label} | PrepTrack AI`]));
+
 const modules = [
-  ["Adaptive Interview", "Dynamic questions, answer evaluation, difficulty tracking, and final reports.", "Available", "/adaptive-interview"],
-  ["Recruiter Simulator", "Company-specific interview styles, standards, and feedback.", "Available", "/recruiter-simulator"],
-  ["Placement Readiness", "Resume, assessment, and interview insights combined into one roadmap.", "Available", "/readiness"],
-  ["Challenge Arena", "Daily challenges, leaderboards, badges, ranks, and streaks.", "Available", "/challenge-arena"],
+  { title: "Enterprise Authentication", text: "Verified accounts, protected sessions, login monitoring, and password security.", status: "Manage security", to: "/security", icon: LockKeyhole },
+  { title: "Role-Based Access Control", text: "Permission-aware experiences for students, mentors, and administrators.", status: "Protected access", to: "role-workspace", icon: ShieldCheck },
+  { title: "Adaptive Interview Engine", text: "Dynamic questions, AI evaluation, difficulty tracking, and final reports.", status: "Start practising", to: "/adaptive-interview", icon: Bot },
+  { title: "AI Recruiter Simulator", text: "Company-specific interview styles, standards, and contextual feedback.", status: "Choose a company", to: "/recruiter-simulator", icon: Building2 },
+  { title: "Placement Readiness Engine", text: "Resume, assessment, and interview evidence combined into one roadmap.", status: "View readiness", to: "/readiness", icon: BarChart3 },
+  { title: "Peer Challenge Arena", text: "Daily challenges, leaderboards, badges, ranks, and preparation streaks.", status: "Enter the arena", to: "/challenge-arena", icon: Swords },
 ];
 
 function Dashboard() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const roleWorkspacePath = role === "admin" ? "/admin" : role === "mentor" ? "/mentor" : "/security";
   const [summary, setSummary] = useState({ readiness: null, interviews: 0, practice: 0, rank: null, streak: 0 });
   const [summaryLoading, setSummaryLoading] = useState(Boolean(db));
 
@@ -109,10 +146,10 @@ function Dashboard() {
       </section>
 
       <section className="module-section">
-        <div className="section-heading"><div><span className="eyebrow">Integrated platform</span><h2>Your preparation workspace</h2></div><span className="phase-chip">Core modules ready</span></div>
+        <div className="section-heading"><div><span className="eyebrow">Six connected capabilities</span><h2>Your complete preparation workspace</h2></div><span className="phase-chip">Unified experience</span></div>
         <div className="module-grid">
-          {modules.map(([title, text, status, to]) => (
-            <NavLink className="module-card" key={title} to={to}><div className="module-icon"><Bot size={22} /></div><h3>{title}</h3><p>{text}</p><span>{status}</span></NavLink>
+          {modules.map(({ title, text, status, to, icon }) => (
+            <NavLink className="module-card" key={title} to={to === "role-workspace" ? roleWorkspacePath : to}><div className="module-icon">{createElement(icon, { size: 22 })}</div><h3>{title}</h3><p>{text}</p><span>{status} →</span></NavLink>
           ))}
         </div>
       </section>
@@ -122,43 +159,96 @@ function Dashboard() {
 
 function ApplicationShell() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { user, role, logout } = useAuth();
+  const [platformMessage, setPlatformMessage] = useState("");
+  const location = useLocation();
+  const { user, profile, role, logout } = useAuth();
   const normalizedRole = String(role || "student").trim().toLowerCase();
+  const currentPageName = navigation.find((item) => item.to === location.pathname)?.label || "Workspace";
+  const accountName = profile?.displayName || user?.displayName || "PrepTrack User";
+  const accountEmail = profile?.email || user?.email || "Account profile";
+  const accountInitials = accountName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "PT";
   const visibleNavigation = normalizedRole === "admin"
     ? navigation
     : navigation.filter((item) => hasPermission(normalizedRole, item.permission));
 
+  useEffect(() => {
+    // These page chunks are small. Fetch them immediately after the secure shell
+    // appears so navigation never waits for a route download.
+    Object.values(routeImport).forEach((load) => load());
+  }, []);
+
+  useEffect(() => {
+    if (!db) return;
+    getDoc(doc(db, "platformSettings", "general"))
+      .then((snapshot) => {
+        const message = String(snapshot.data()?.maintenanceMessage || "").trim();
+        setPlatformMessage(message.toLowerCase() === "preptrack ai platform is operating normally." ? "" : message);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    document.title = pageTitles[location.pathname] || "PrepTrack AI";
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const closeOnEscape = (event) => { if (event.key === "Escape") setMenuOpen(false); };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [menuOpen]);
+
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <aside className={menuOpen ? "sidebar open" : "sidebar"}>
         <div className="brand"><span>PT</span><div><strong>PrepTrack</strong><small>AI Career Lab</small></div></div>
         <button className="close-menu" onClick={() => setMenuOpen(false)} aria-label="Close navigation"><X /></button>
-        <nav>
+        <nav aria-label="Primary navigation">
           {visibleNavigation.map(({ to, label, icon }) => (
-            <NavLink key={to} to={to} onClick={() => setMenuOpen(false)}>{createElement(icon, { size: 20 })}<span>{label}</span></NavLink>
+            <NavLink key={to} to={to} onPointerEnter={() => preloadRoute(to)} onFocus={() => preloadRoute(to)} onClick={() => setMenuOpen(false)}>{createElement(icon, { size: 20 })}<span>{label}</span></NavLink>
           ))}
         </nav>
-        <div className="sidebar-profile"><UserRound /><div><strong>{user?.displayName || "Student"}</strong><small>{normalizedRole} workspace</small></div><button className="logout-icon" onClick={logout} aria-label="Sign out"><LogOut size={16} /><span>Sign out</span></button></div>
+        <div className="sidebar-profile">
+          <NavLink className="profile-identity" to="/security" onClick={() => setMenuOpen(false)} aria-label={`Open account profile for ${accountName}`} title={accountEmail}>
+            <span className="profile-avatar" aria-hidden="true">{user?.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" /> : accountInitials}</span>
+            <span className="profile-copy"><strong>{accountName}</strong><small>{normalizedRole} workspace</small></span>
+          </NavLink>
+          <button className="logout-icon" onClick={logout} aria-label="Sign out"><LogOut size={16} /><span>Sign out</span></button>
+        </div>
       </aside>
 
-      <main>
-        <header className="topbar"><button className="menu-button" onClick={() => setMenuOpen(true)} aria-label="Open navigation"><Menu size={20} /><span>Menu</span></button><div><span>Internship build</span><strong>PrepTrack AI</strong></div><span className="role-badge">{normalizedRole}</span></header>
+      <main id="main-content" tabIndex="-1">
+        <header className="topbar"><button className="menu-button" onClick={() => setMenuOpen(true)} aria-label="Open navigation"><Menu size={20} /><span>Menu</span></button><div><span>PrepTrack AI workspace</span><strong>{currentPageName}</strong></div><ThemeToggle /></header>
         <div className="content">
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/practice" element={<AuthorizedRoute permission={PERMISSIONS.USE_PRACTICE}><PracticePage /></AuthorizedRoute>} />
-            <Route path="/notes" element={<AuthorizedRoute permission={PERMISSIONS.MANAGE_OWN_NOTES}><NotesPage /></AuthorizedRoute>} />
-            <Route path="/adaptive-interview" element={<AuthorizedRoute permission={PERMISSIONS.USE_INTERVIEWS}><AdaptiveInterviewPage /></AuthorizedRoute>} />
-            <Route path="/recruiter-simulator" element={<AuthorizedRoute permission={PERMISSIONS.USE_INTERVIEWS}><RecruiterSimulatorPage /></AuthorizedRoute>} />
-            <Route path="/readiness" element={<AuthorizedRoute permission={PERMISSIONS.VIEW_OWN_READINESS}><PlacementReadinessPage /></AuthorizedRoute>} />
-            <Route path="/challenge-arena" element={<AuthorizedRoute permission={PERMISSIONS.USE_CHALLENGES}><ChallengeArenaPage /></AuthorizedRoute>} />
-            <Route path="/mentor" element={<AuthorizedRoute permission={PERMISSIONS.REVIEW_STUDENTS}><RoleWorkspacePage type="mentor" /></AuthorizedRoute>} />
-            <Route path="/admin" element={<AuthorizedRoute permission={PERMISSIONS.MANAGE_PLATFORM}><RoleWorkspacePage type="admin" /></AuthorizedRoute>} />
-            <Route path="/security" element={<AuthorizedRoute permission={PERMISSIONS.MANAGE_OWN_SECURITY}><AccountSecurityPage /></AuthorizedRoute>} />
-            <Route path="/unauthorized" element={<UnauthorizedPage />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
+          {platformMessage && <div className="platform-notice" role="status">{platformMessage}</div>}
+          <AppErrorBoundary>
+            <Suspense fallback={<PageLoader />}>
+              <div className="route-stage" key={location.pathname}>
+                <Routes location={location}>
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/practice" element={<AuthorizedRoute permission={PERMISSIONS.USE_PRACTICE}><PracticePage /></AuthorizedRoute>} />
+                  <Route path="/notes" element={<AuthorizedRoute permission={PERMISSIONS.MANAGE_OWN_NOTES}><NotesPage /></AuthorizedRoute>} />
+                  <Route path="/adaptive-interview" element={<AuthorizedRoute permission={PERMISSIONS.USE_INTERVIEWS}><AdaptiveInterviewPage /></AuthorizedRoute>} />
+                  <Route path="/recruiter-simulator" element={<AuthorizedRoute permission={PERMISSIONS.USE_INTERVIEWS}><RecruiterSimulatorPage /></AuthorizedRoute>} />
+                  <Route path="/readiness" element={<AuthorizedRoute permission={PERMISSIONS.VIEW_OWN_READINESS}><PlacementReadinessPage /></AuthorizedRoute>} />
+                  <Route path="/challenge-arena" element={<AuthorizedRoute permission={PERMISSIONS.USE_CHALLENGES}><ChallengeArenaPage /></AuthorizedRoute>} />
+                  <Route path="/mentor" element={<AuthorizedRoute permission={PERMISSIONS.REVIEW_STUDENTS}><RoleWorkspacePage type="mentor" /></AuthorizedRoute>} />
+                  <Route path="/admin" element={<AuthorizedRoute permission={PERMISSIONS.MANAGE_PLATFORM}><RoleWorkspacePage type="admin" /></AuthorizedRoute>} />
+                  <Route path="/security" element={<AuthorizedRoute permission={PERMISSIONS.MANAGE_OWN_SECURITY}><AccountSecurityPage /></AuthorizedRoute>} />
+                  <Route path="/unauthorized" element={<UnauthorizedPage />} />
+                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                </Routes>
+              </div>
+            </Suspense>
+          </AppErrorBoundary>
         </div>
       </main>
       {menuOpen && <button className="backdrop" onClick={() => setMenuOpen(false)} aria-label="Close navigation overlay" />}
@@ -168,10 +258,16 @@ function ApplicationShell() {
 
 function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<AuthPage />} />
-      <Route path="/*" element={<ProtectedRoute><ApplicationShell /></ProtectedRoute>} />
-    </Routes>
+    <AppErrorBoundary>
+      <Suspense fallback={<PageLoader label="Preparing PrepTrack AI" />}>
+        <Routes>
+          <Route path="/login" element={<AuthPage />} />
+          <Route path="/auth/action" element={<EmailActionPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/*" element={<ProtectedRoute><ApplicationShell /></ProtectedRoute>} />
+        </Routes>
+      </Suspense>
+    </AppErrorBoundary>
   );
 }
 

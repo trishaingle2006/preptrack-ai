@@ -442,19 +442,44 @@ async function requirePlatformRole(request, allowedRoles) {
   return role;
 }
 
+export const getPublicPlatformSettings = onCall({ region: "asia-south1", cors: true }, async () => {
+  const snapshot = await getFirestore().doc("platformSettings/general").get();
+  return {
+    registrationsEnabled: snapshot.data()?.registrationsEnabled !== false,
+    maintenanceMessage: clean(snapshot.data()?.maintenanceMessage, 500),
+  };
+});
+
 export const getAdminWorkspace = onCall({ region: "asia-south1", cors: true }, async (request) => {
   await requirePlatformRole(request, ["admin"]);
   const database = getFirestore();
-  const [users, settings] = await Promise.all([
+  const [users, settings, interviews, readinessReports, challengeAttempts, securityAlerts, recentActivity] = await Promise.all([
     database.collection("users").get(),
     database.doc("platformSettings/general").get(),
+    database.collectionGroup("interviewSessions").count().get(),
+    database.collectionGroup("readinessReports").count().get(),
+    database.collection("challengeAttempts").count().get(),
+    database.collectionGroup("securityAlerts").count().get(),
+    database.collection("platformActivity").orderBy("createdAt", "desc").limit(8).get(),
   ]);
+  const userRows = users.docs.map((item) => {
+    const data = item.data();
+    return { id: item.id, displayName: clean(data.displayName, 100), email: clean(data.email, 320), role: clean(data.role, 30) || "student", status: clean(data.status, 30) || "active" };
+  });
   return {
-    users: users.docs.map((item) => {
-      const data = item.data();
-      return { id: item.id, displayName: clean(data.displayName, 100), email: clean(data.email, 320), role: clean(data.role, 30) || "student", status: clean(data.status, 30) || "active" };
-    }),
+    users: userRows,
     settings: { registrationsEnabled: settings.data()?.registrationsEnabled !== false, maintenanceMessage: clean(settings.data()?.maintenanceMessage, 500) },
+    activity: {
+      metrics: {
+        totalUsers: userRows.length,
+        activeUsers: userRows.filter((item) => item.status === "active").length,
+        completedInterviews: interviews.data().count,
+        readinessReports: readinessReports.data().count,
+        challengeSubmissions: challengeAttempts.data().count,
+        securityAlerts: securityAlerts.data().count,
+      },
+      recent: recentActivity.docs.map((item) => ({ id: item.id, ...item.data(), createdAt: item.data().createdAt?.toDate?.().toISOString?.() ?? null })),
+    },
   };
 });
 
@@ -474,7 +499,15 @@ export const updatePlatformUser = onCall({ region: "asia-south1", cors: true }, 
     changes.status = status;
   }
   if (!Object.keys(changes).length) throw new HttpsError("invalid-argument", "No valid changes were provided.");
-  await getFirestore().doc(`users/${userId}`).set({ ...changes, updatedAt: FieldValue.serverTimestamp(), updatedBy: request.auth.uid }, { merge: true });
+  const database = getFirestore();
+  await database.doc(`users/${userId}`).set({ ...changes, updatedAt: FieldValue.serverTimestamp(), updatedBy: request.auth.uid }, { merge: true });
+  await database.collection("platformActivity").add({
+    type: "user_updated",
+    summary: `User ${Object.entries(changes).map(([key, value]) => `${key} set to ${value}`).join(" and ")}`,
+    actorUid: request.auth.uid,
+    targetUid: userId,
+    createdAt: FieldValue.serverTimestamp(),
+  }).catch((error) => logger.warn("Unable to record platform activity", { message: error.message }));
   return { updated: true, changes };
 });
 
@@ -486,7 +519,14 @@ export const savePlatformSettings = onCall({ region: "asia-south1", cors: true }
     updatedAt: FieldValue.serverTimestamp(),
     updatedBy: request.auth.uid,
   };
-  await getFirestore().doc("platformSettings/general").set(settings, { merge: true });
+  const database = getFirestore();
+  await database.doc("platformSettings/general").set(settings, { merge: true });
+  await database.collection("platformActivity").add({
+    type: "settings_updated",
+    summary: "Platform configuration updated",
+    actorUid: request.auth.uid,
+    createdAt: FieldValue.serverTimestamp(),
+  }).catch((error) => logger.warn("Unable to record platform activity", { message: error.message }));
   return { saved: true };
 });
 

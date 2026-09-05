@@ -13,12 +13,13 @@ import {
   updateProfile,
 } from "firebase/auth";
 import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { auth, db, isFirebaseConfigured } from "../lib/firebase";
 import { checkLogin, recordFailedLogin, recordPasswordUpdate, registerSession, revokeSession } from "../services/securityService";
 
 const AuthContext = createContext(null);
 const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+const emailActionSettings = () => ({ url: `${window.location.origin}/login`, handleCodeInApp: false });
 
 async function ensureStudentProfile(user, displayName = "") {
   if (!db) return { role: "student", permissions: [] };
@@ -48,6 +49,8 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(isFirebaseConfigured);
   const [sessionId, setSessionId] = useState(() => localStorage.getItem("preptrackSessionId"));
   const [passwordUpdateRequired, setPasswordUpdateRequired] = useState(false);
+  const [authenticating, setAuthenticating] = useState(false);
+  const authOperationRef = useRef(false);
 
   useEffect(() => {
     if (!auth) {
@@ -72,6 +75,9 @@ export function AuthProvider({ children }) {
     if (!db || !user || !sessionId) return undefined;
     return onSnapshot(doc(db, "users", user.uid, "activeSessions", sessionId), (snapshot) => {
       if (snapshot.exists() && snapshot.data().status !== "active") {
+        // A previous listener may resolve while a fresh login is establishing a
+        // replacement session. It must never sign out the newly authenticated user.
+        if (authOperationRef.current || localStorage.getItem("preptrackSessionId") !== sessionId) return;
         localStorage.removeItem("preptrackSessionId");
         setSessionId(null);
         signOut(auth);
@@ -94,36 +100,53 @@ export function AuthProvider({ children }) {
     const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
     await updateProfile(credential.user, { displayName: name.trim() });
     await ensureStudentProfile(credential.user, name.trim());
-    await sendEmailVerification(credential.user);
+    auth.useDeviceLanguage();
+    await sendEmailVerification(credential.user, emailActionSettings());
     await signOut(auth);
   }
 
   async function login({ email, password }) {
     if (!auth) throw new Error("Firebase is not configured.");
-    await checkLogin(email.trim());
-    localStorage.removeItem("preptrackSessionId"); setSessionId(null);
-    let credential;
-    try { credential = await signInWithEmailAndPassword(auth, email.trim(), password); }
-    catch (error) { if (["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"].includes(error.code)) await recordFailedLogin(email.trim()).catch(() => {}); throw error; }
-    if (!credential.user.emailVerified) {
-      await sendEmailVerification(credential.user);
-      await signOut(auth);
-      throw new Error("Verify your email before signing in. A new verification email was sent.");
+    authOperationRef.current = true;
+    setAuthenticating(true);
+    try {
+      await checkLogin(email.trim());
+      localStorage.removeItem("preptrackSessionId"); setSessionId(null);
+      let credential;
+      try { credential = await signInWithEmailAndPassword(auth, email.trim(), password); }
+      catch (error) { if (["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"].includes(error.code)) await recordFailedLogin(email.trim()).catch(() => {}); throw error; }
+      if (!credential.user.emailVerified) {
+        auth.useDeviceLanguage();
+        await sendEmailVerification(credential.user, emailActionSettings());
+        await signOut(auth);
+        throw new Error("Verify your email before signing in. A new verification email was sent.");
+      }
+      try { await establishSession(); } catch (error) { await signOut(auth); throw error; }
+    } finally {
+      authOperationRef.current = false;
+      setAuthenticating(false);
     }
-    try { await establishSession(); } catch (error) { await signOut(auth); throw error; }
   }
 
   async function loginWithGoogle() {
     if (!auth) throw new Error("Firebase is not configured.");
-    localStorage.removeItem("preptrackSessionId"); setSessionId(null);
-    const credential = await signInWithPopup(auth, new GoogleAuthProvider());
-    await ensureStudentProfile(credential.user);
-    try { await establishSession(); } catch (error) { await signOut(auth); throw error; }
+    authOperationRef.current = true;
+    setAuthenticating(true);
+    try {
+      localStorage.removeItem("preptrackSessionId"); setSessionId(null);
+      const credential = await signInWithPopup(auth, new GoogleAuthProvider());
+      await ensureStudentProfile(credential.user);
+      try { await establishSession(); } catch (error) { await signOut(auth); throw error; }
+    } finally {
+      authOperationRef.current = false;
+      setAuthenticating(false);
+    }
   }
 
   async function resetPassword(email) {
     if (!auth) throw new Error("Firebase is not configured.");
-    await sendPasswordResetEmail(auth, email.trim());
+    auth.useDeviceLanguage();
+    await sendPasswordResetEmail(auth, email.trim(), emailActionSettings());
   }
 
   async function changePassword(currentPassword, nextPassword) {
@@ -152,6 +175,7 @@ export function AuthProvider({ children }) {
     changePassword,
     passwordUpdateRequired,
     sessionId,
+    authenticating,
     logout,
   };
 

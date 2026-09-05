@@ -20,7 +20,7 @@ initializeAdmin();
 
 const handlers = await import("../functions/src/index.js");
 
-const publicActions = new Set(["checkLoginAllowed", "recordFailedLogin"]);
+const publicActions = new Set(["checkLoginAllowed", "recordFailedLogin", "getPublicPlatformSettings"]);
 const availableActions = new Set([
   "evaluateInterviewAnswer",
   "analyzePlacementReadiness",
@@ -28,6 +28,7 @@ const availableActions = new Set([
   "submitChallengeAttempt",
   "checkLoginAllowed",
   "recordFailedLogin",
+  "getPublicPlatformSettings",
   "registerSecuritySession",
   "getSecurityOverview",
   "revokeSecuritySession",
